@@ -1,4 +1,4 @@
-package lesjad.utils.objectsanitizing;
+package lesjad.utils.refactor;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -7,24 +7,31 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
+import java.util.function.Consumer;
 import java.util.function.Predicate;
 
 public class Sanitization_RemoveEmptyStrings implements SanitizationConditions{
 
     protected static Logger logger = LoggerFactory.getLogger(Sanitization_RemoveEmptyStrings.class);
     //MAPING WHERE TO USE ACTIONS
-    Map<Predicate<Object>, Function<Object, Object>> conditionalActions = new HashMap<>();
+    Map<Predicate<Object>, Consumer<Object>> conditionalActions = new HashMap<>();
 
     public Sanitization_RemoveEmptyStrings() {
         conditionalActions.put(
-                UsefullPredicates.IS_NULL.p.negate().or(UsefullPredicates.IS_PRIMITIVE.p.negate()),
-                ActionToPerform.REPLACE_EMPTY_STRING_WITH_NULL.f.andThen(o -> UsefullPredicates.IS_NULL.p.test(o)?
-                        ActionToPerform.DO_NOTHING :
-                        ActionToPerform.REPLACE_WITH_NULL_IF_ALL_NONE_PRIMITIVE_FIELDS_ARE_EMPTY.f));
+                predicateWrapper(
+                UsefullPredicates.IS_NULL.p.negate().or(
+                        UsefullPredicates.IS_PRIMITIVE.p.negate())),
+                consumerWrapper(
+                ActionToPerform.REPLACE_EMPTY_STRING_WITH_NULL.f.andThen(
+                        o -> {
+                            Consumer<Object> objectConsumer = UsefullPredicates.IS_NULL.p.test(o) ?
+                                    ActionToPerform.DO_NOTHING.f :
+                                    ActionToPerform.REPLACE_WITH_NULL_IF_ALL_NONE_PRIMITIVE_FIELDS_ARE_EMPTY.f;
+                            objectConsumer.accept(o);
+                        })));
     }
 
-    public Sanitization_RemoveEmptyStrings(Map<Predicate<Object>, Function<Object, Object>> conditionalActions) {
+    public Sanitization_RemoveEmptyStrings(Map<Predicate<Object>, Consumer<Object>> conditionalActions) {
         this.conditionalActions = conditionalActions;
     }
 
@@ -44,17 +51,17 @@ public class Sanitization_RemoveEmptyStrings implements SanitizationConditions{
     }
 
     @Override
-    public List<Map<Predicate<Object>, Function<Object, Object>>> listOfConditionalActions() {
+    public List<Map<Predicate<Object>, Consumer<Object>>> listOfConditionalActions() {
         return List.of(conditionalActions);
     }
 
     @Override
-    public Map<Predicate<Object>, Function<Object, Object>> conditionalAction() {
+    public Map<Predicate<Object>, Consumer<Object>> conditionalAction() {
         return conditionalActions;
     }
 
     @Override
-    public Function<Object, Object> singleAction() {
+    public Consumer<Object> singleAction() {
         return null;
     }
 
@@ -95,14 +102,14 @@ public class Sanitization_RemoveEmptyStrings implements SanitizationConditions{
         private Predicate<Object> p;
 //        private String identifier;
 
-        private UsefullPredicates(Predicate<Object> p){//, String identifier) {
+        UsefullPredicates(Predicate<Object> p){//, String identifier) {
             this.p = p;
 //            this.identifier = identifier;
         }
 
-        public Predicate<Object> getP() {
-            return p;
-        }
+//        public Predicate<Object> getP() {
+//            return p;
+//        }
 
 //        public String getIdentifier(){
 //            return this.identifier;
@@ -116,7 +123,6 @@ public class Sanitization_RemoveEmptyStrings implements SanitizationConditions{
             o = o instanceof String?
                     ((String) o).isBlank() ? null : o
                     : o;
-            return o;
         }),
         REPLACE_WITH_NULL_IF_ALL_NONE_PRIMITIVE_FIELDS_ARE_EMPTY(
                 o -> {
@@ -125,15 +131,37 @@ public class Sanitization_RemoveEmptyStrings implements SanitizationConditions{
                     o = Arrays.stream(o.getClass().getDeclaredFields()).anyMatch(
                             field -> !UsefullPredicates.IS_PRIMITIVE.p
                                     .or(UsefullPredicates.IS_ENUM.p).test(field) && !UsefullPredicates.IS_NULL.p.test(field)) ? o : null;
-                    return o;
                 }
         ),
-        DO_NOTHING(Function.identity());
+        DO_NOTHING(o -> {});
 
-        private Function<Object, Object> f;
+        private Consumer<Object> f;
 
-        ActionToPerform(Function<Object, Object> f){
+        ActionToPerform(Consumer<Object> f){
             this.f = f;
         }
+    }
+
+    private Consumer<Object> consumerWrapper(Consumer<Object> action){
+        return o -> {
+            try {
+                action.accept(o);
+            } catch (NullPointerException e) {
+                logger.error(String.format("NullPointerException in wrapper : %s", e.getMessage()));
+            }
+        };
+    }
+
+    //wrapper class to work with errors
+    private Predicate<Object> predicateWrapper(Predicate<Object> pred){
+        return o -> {
+            try {
+                return pred.test(o);
+            } catch (NullPointerException e) {
+                logger.error(String.format("NullPointerException in predicate wrapper : %s", e.getMessage()));
+                logger.error("Due to NPE cannot estimate value.. should abort program - will return false for now.");//todo: think of a solution
+            }
+            return false;
+        };
     }
 }
