@@ -11,8 +11,11 @@ import java.util.function.Predicate;
 
 public class GenericSanitizer implements ObjectStructureSanitizer {
 
-    protected final Logger logger = LoggerFactory.getLogger(getClass());
+    protected static final Logger logger = LoggerFactory.getLogger(GenericSanitizer.class);
 
+    static {
+        logger.debug("GenericSanitizer version: 1.02");
+    }
     @Override
     public Object refactorObject(Object o, Predicate<Object> nestingLimit, Map<Predicate<Object>, Consumer<Object>> modificationsMap) {
         Field[] fields;
